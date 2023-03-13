@@ -36,6 +36,25 @@ MACHINES = {
   },
 }
 
+$make_raid = <<-'SCRIPT'
+    mdadm --zero-superblock --force /dev/sd{b,c,d,e,f}
+    mdadm --create --verbose /dev/md5 -l 5 -n 5 /dev/sd{b,c,d,e,f}
+    mkdir /etc/mdadm
+    echo "DEVICE partitions" > /etc/mdadm/mdadm.conf
+    mdadm --detail --scan --verbose | awk '/ARRAY/{print}' >> /etc/mdadm/mdadm.conf
+SCRIPT
+
+$make_partitions = <<-'SCRIPT'
+    parted -s /dev/md5 mklabel gpt
+    parted /dev/md5 mkpart primary ext4 0% 20%
+    parted /dev/md5 mkpart primary ext4 20% 40%
+    parted /dev/md5 mkpart primary ext4 40% 60%
+    parted /dev/md5 mkpart primary ext4 60% 80%
+    parted /dev/md5 mkpart primary ext4 80% 100%
+    for i in $(seq 1 5); do mkfs.ext4 /dev/md5p$i; done
+    mkdir -p /raid/part{1,2,3,4,5}
+    for i in $(seq 1 5); do mount /dev/md5p$i /raid/part$i; done
+SCRIPT
 Vagrant.configure("2") do |config|
 
   MACHINES.each do |boxname, boxconfig|
@@ -71,7 +90,8 @@ Vagrant.configure("2") do |config|
               cp ~vagrant/.ssh/auth* ~root/.ssh
 	      yum install -y mdadm smartmontools hdparm gdisk
           SHELL
-
+          box.vm.provision "shell", inline: $make_raid
+          box.vm.provision "shell", inline: $make_partitions
       end
   end
 end
